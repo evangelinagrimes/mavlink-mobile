@@ -1,0 +1,5 @@
+<resources>
+    <!-- Shell theme for Compose: just suppresses the system action bar.
+         All actual colors/typography are defined in the Compose MaterialTheme. -->
+    <style name="Theme.Mavlinkapplication" parent="Theme.AppCompat.Light.NoActionBar" />
+</resources>

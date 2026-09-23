@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Mavlinkapplication" parent="Theme.AppCompat.DayNight.NoActionBar" />
+</resources>
