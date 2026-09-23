@@ -1,8 +1,10 @@
 package com.example.mavlinkapplication.di
 
+import com.example.mavlinkapplication.domain.ArmRepository
 import com.example.mavlinkapplication.domain.ModeRepository
 import com.example.mavlinkapplication.domain.ParamRepository
 import com.example.mavlinkapplication.domain.TelemetryRepository
+import com.example.mavlinkapplication.mavsdk.MavsdkArmRepository
 import com.example.mavlinkapplication.mavsdk.MavsdkModeRepository
 import com.example.mavlinkapplication.mavsdk.MavsdkParamRepository
 import com.example.mavlinkapplication.mavsdk.MavsdkTelemetryRepository
@@ -24,4 +26,7 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindMode(impl: MavsdkModeRepository): ModeRepository
+
+    @Binds @Singleton
+    abstract fun bindArm(impl: MavsdkArmRepository): ArmRepository
 }

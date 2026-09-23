@@ -19,13 +19,10 @@ class HitTargetApp : Application() {
     override fun onCreate() {
         super.onCreate()
         appScope.launch {
-            // MavsdkServer.run() blocks until SITL connects; runs on IO.
-            // Change the address string to match your test environment:
-            //   emulator → "udpout://10.0.2.2:14550"  (SITL on host port 14550)
-            //   physical → "udpout://<host-ip>:14550"
-            //   SITL-in  → "udpin://0.0.0.0:14540"    (SITL must reach this device)
-            // tcp://127.0.0.1:5760 — adb reverse maps emulator:5760 → host SITL TCP 5760
-            connectionManager.connect("tcpout://127.0.0.1:5760")
+            // runConnectionLoop never returns: it connects, then reconnects on its own
+            // if the heartbeat goes stale (link drop, or SITL not up yet at launch).
+            // tcpout://127.0.0.1:5760 — adb reverse maps emulator:5760 → host SITL TCP 5760
+            connectionManager.runConnectionLoop("tcpout://127.0.0.1:5760")
         }
     }
 }

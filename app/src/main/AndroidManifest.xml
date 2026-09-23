@@ -19,6 +19,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:resizeableActivity="true"
+            android:screenOrientation="landscape"
             android:theme="@style/Theme.Mavlinkapplication"
             tools:targetApi="24">
             <intent-filter>

@@ -1,31 +1,30 @@
 package com.example.mavlinkapplication.mavsdk
 
+import com.example.mavlinkapplication.domain.LinkHealthEvaluator
 import io.mavsdk.System
 import io.mavsdk.mavsdkserver.MavsdkServer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val RECONNECT_BACKOFF_MS = 2_000L
+
 /**
  * Owns the MavsdkServer lifecycle and the System (plugin entry point).
- *
- * Call [connect] once from the app. [connected] emits true when the System is ready so
- * repositories can flatMapLatest on it instead of calling [system] at construction time.
  *
  * [CONFIRMED] API from MAVSDK-Java 3.17.4 jar inspection:
  *   io.mavsdk.mavsdkserver.MavsdkServer() — no Context parameter
  *   server.run(systemAddress: String): Int → port
  *   System("127.0.0.1", port)
- *
- * Emulator address: "udpout://10.0.2.2:14550"
- *   10.0.2.2 = host loopback from Android emulator.
- *   SITL must be running and accepting on host UDP 14550.
- * Physical device: "udpout://<device-ip>:14550", SITL --out to device IP.
- * SITL inbound: "udpin://0.0.0.0:14540" — mavsdk_server listens; SITL must reach device port.
  */
 @Singleton
 class MavsdkConnectionManager @Inject constructor() {
@@ -37,13 +36,49 @@ class MavsdkConnectionManager @Inject constructor() {
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
-    suspend fun connect(systemAddress: String = "tcpout://127.0.0.1:5760") {
+    /**
+     * Connects and then supervises the link forever: if no autopilot heartbeat arrives
+     * for longer than [LinkHealthEvaluator.LOST_THRESHOLD_MS] (whether we never connected,
+     * SITL wasn't up yet, or a live link dropped), tears down and reconnects. Call once
+     * from application startup; never returns.
+     */
+    suspend fun runConnectionLoop(systemAddress: String) {
+        while (true) {
+            try {
+                connectOnce(systemAddress)
+                waitUntilStale()
+            } catch (_: Exception) {
+                // Fall through to disconnect + retry below.
+            }
+            disconnect()
+            delay(RECONNECT_BACKOFF_MS)
+        }
+    }
+
+    private suspend fun connectOnce(systemAddress: String) {
         withContext(Dispatchers.IO) {
             val server = MavsdkServer()
             val port = server.run(systemAddress)
             mavsdkServer = server
             system = System("127.0.0.1", port)
             _connected.value = true
+        }
+    }
+
+    /** Suspends until the autopilot's heartbeat has gone stale. */
+    private suspend fun waitUntilStale() {
+        val sys = system ?: return
+        withContext(Dispatchers.IO) {
+            val heartbeatFlow = sys.mavlinkDirect.getMessage("HEARTBEAT")
+                .toObservable().asFlow()
+                .filter { it.componentId == AUTOPILOT_COMPONENT_ID }
+
+            while (true) {
+                val gotOne = withTimeoutOrNull(LinkHealthEvaluator.LOST_THRESHOLD_MS) {
+                    heartbeatFlow.first()
+                }
+                if (gotOne == null) return@withContext // stale — trigger reconnect
+            }
         }
     }
 

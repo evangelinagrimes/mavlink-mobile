@@ -1,5 +1,6 @@
 package com.example.mavlinkapplication.mavsdk
 
+import com.example.mavlinkapplication.domain.CommandException
 import com.example.mavlinkapplication.domain.ParamRepository
 import com.example.mavlinkapplication.domain.VehicleParam
 import com.example.mavlinkapplication.domain.VehicleParam.ParamType
@@ -19,6 +20,10 @@ import javax.inject.Singleton
  *   setParamFloat(id, v) → Completable
  *   getParamInt(id)      → Single<Integer>
  *   setParamInt(id, v)   → Completable
+ *
+ * [set] uses the caller-supplied [VehicleParam.ParamType] to pick float vs int — it
+ * does not guess by trying one and falling back to the other, which previously meant
+ * an int param could silently be written as a different type than requested.
  */
 @Singleton
 class MavsdkParamRepository @Inject constructor(
@@ -50,19 +55,17 @@ class MavsdkParamRepository @Inject constructor(
         }
     }
 
-    override suspend fun set(id: String, value: Float): Result<Unit> {
+    override suspend fun set(id: String, value: Float, type: ParamType): Result<Unit> {
         val param = connectionManager.system?.param
-            ?: return Result.failure(IllegalStateException("Not connected"))
+            ?: return Result.failure(CommandException.NotConnected)
         return try {
-            param.setParamFloat(id, value).await()
-            Result.success(Unit)
-        } catch (_: Exception) {
-            try {
-                param.setParamInt(id, value.toInt()).await()
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Result.failure(e)
+            when (type) {
+                ParamType.REAL32, ParamType.REAL64 -> param.setParamFloat(id, value).await()
+                else -> param.setParamInt(id, value.toInt()).await()
             }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

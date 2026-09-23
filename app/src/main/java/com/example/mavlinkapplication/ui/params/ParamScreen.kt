@@ -7,13 +7,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +47,7 @@ fun ParamScreen(
     val filteredParams by viewModel.filteredParams.collectAsStateWithLifecycle()
     val filter         by viewModel.filter.collectAsStateWithLifecycle()
     val isLoading      by viewModel.isLoading.collectAsStateWithLifecycle()
+    val editState      by viewModel.editState.collectAsStateWithLifecycle()
 
     var editingParam by remember { mutableStateOf<VehicleParam?>(null) }
 
@@ -78,7 +83,12 @@ fun ParamScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredParams, key = { it.id }) { param ->
-                        ParamRow(param = param, onClick = { editingParam = param })
+                        val rowState = when {
+                            editState is ParamEditState.Pending && (editState as ParamEditState.Pending).id == param.id -> RowEditState.PENDING
+                            editState is ParamEditState.Failed && (editState as ParamEditState.Failed).id == param.id -> RowEditState.FAILED
+                            else -> RowEditState.IDLE
+                        }
+                        ParamRow(param = param, rowState = rowState, onClick = { editingParam = param })
                         HorizontalDivider()
                     }
                 }
@@ -90,7 +100,7 @@ fun ParamScreen(
         EditParamDialog(
             param = param,
             onConfirm = { newValue ->
-                viewModel.setParam(param.id, newValue)
+                viewModel.setParam(param.id, newValue, param.type)
                 editingParam = null
             },
             onDismiss = { editingParam = null },
@@ -98,18 +108,40 @@ fun ParamScreen(
     }
 }
 
+private enum class RowEditState { IDLE, PENDING, FAILED }
+
+private val INT_TYPES = setOf(
+    VehicleParam.ParamType.UINT8, VehicleParam.ParamType.INT8,
+    VehicleParam.ParamType.UINT16, VehicleParam.ParamType.INT16,
+    VehicleParam.ParamType.UINT32, VehicleParam.ParamType.INT32,
+)
+
+private fun formatParamValue(param: VehicleParam): String =
+    if (param.type in INT_TYPES) param.value.toInt().toString() else "%.4f".format(param.value)
+
 @Composable
-private fun ParamRow(param: VehicleParam, onClick: () -> Unit) {
+private fun ParamRow(param: VehicleParam, rowState: RowEditState, onClick: () -> Unit) {
     ListItem(
         headlineContent = {
             Text(param.id, style = MaterialTheme.typography.bodyMedium)
         },
         trailingContent = {
-            Text(
-                text = "%.4f".format(param.value),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            when (rowState) {
+                RowEditState.PENDING -> CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+                RowEditState.FAILED -> Icon(
+                    Icons.Filled.WarningAmber,
+                    contentDescription = "Set failed — not confirmed",
+                    tint = MaterialTheme.colorScheme.error,
+                )
+                RowEditState.IDLE -> Text(
+                    text = formatParamValue(param),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         },
         modifier = Modifier.clickable(onClick = onClick),
     )
